@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bin-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./database.db:/app/database.db
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
