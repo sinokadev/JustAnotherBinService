@@ -4,8 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bin {{ bin_id }} - bin.sinoka.dev</title>
+
+    <meta name="description" content="View pasted content on bin.sinoka.dev (Bin ID: {{ bin_id }})">
+    <meta name="robots" content="noindex, follow">
+    
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="Bin {{ bin_id }} - bin.sinoka.dev">
+    <meta property="og:description" content="View pasted content on bin.sinoka.dev">
 </head>
 <body>
+    <h1>Bin {{ bin_id }} - Just Another Bin Service</h1>
+    <a href="/">Home</a> <a href="/raw/{{ bin_id }}">Raw</a> <br><br> 
+    <pre><code>
     {{ bin_content }}
+    </code></pre>
 </body>
 </html>

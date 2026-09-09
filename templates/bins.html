@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Bins - bin.sinoka.dev</title>
+</head>
+<body>
+    <h1>Bins - Just Another Bin Service</h1>
+    
+    <ul>
+        {% for bin in bins %}
+            <li>
+                <a href="/bin/{{ bin.id }}">Bin #{{ bin.id }}</a> 
+                - {{ bin.content[:30] }}{% if bin.content|length > 30 %}...{% endif %}
+            </li>
+        {% else %}
+            <li>There's no bins.</li>
+        {% endfor %}
+    </ul>
+
+    <div style="margin-top: 20px;">
+        {% if has_prev %}
+            <a href="/bins?page={{ page - 1 }}">← Previous</a>
+        {% else %}
+            <span style="color: gray;">← Previous</span>
+        {% endif %}
+
+        <span> Page {{ page }} / {{ total_pages }} </span>
+
+        {% if has_next %}
+            <a href="/bins?page={{ page + 1 }}">Next →</a>
+        {% else %}
+            <span style="color: gray;">Next →</span>
+        {% endif %}
+    </div>
+
+    <br>
+    <a href="/">Home</a>
+</body>
+</html>
