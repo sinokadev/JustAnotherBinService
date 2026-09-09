@@ -29,6 +29,12 @@ def get_session():
         yield session
 
 
+def get_real_ip(request: Request) -> str:
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return get_remote_address(request)
+
 SessionDep = Annotated[Session, Depends(get_session)]
 
 @asynccontextmanager
@@ -36,7 +42,7 @@ async def lifespan(app: FastAPI):
     create_db_and_tables()
     yield
 
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_real_ip)
 
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
@@ -58,7 +64,7 @@ async def main(request: Request):
     )
 
 @app.post("/bin", response_class=RedirectResponse)
-@limiter.limit("5/minute")
+@limiter.limit("10/minute")
 async def post_bin(request: Request, session: SessionDep, content: str = Form()):
     clean_content = content.strip()
     
@@ -79,7 +85,7 @@ async def post_bin(request: Request, session: SessionDep, content: str = Form())
     return RedirectResponse(f"/bin/{bin_item.id}", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.get("/api/bin/{bin_id}")
-@limiter.limit("1/minute")
+@limiter.limit("10/minute")
 async def get_bin_json(request: Request, bin_id: int, session: SessionDep):
     bin_asdf = session.get(BinModel, bin_id)
     if not bin_asdf:
@@ -87,7 +93,7 @@ async def get_bin_json(request: Request, bin_id: int, session: SessionDep):
     return bin_asdf
 
 @app.get("/raw/{bin_id}", response_class=PlainTextResponse)
-@limiter.limit("1/minute")
+@limiter.limit("10/minute")
 async def get_bin_raw(request: Request, bin_id: int, session: SessionDep):
     bin_item = session.get(BinModel, bin_id)
     if not bin_item:
@@ -95,7 +101,7 @@ async def get_bin_raw(request: Request, bin_id: int, session: SessionDep):
     return bin_item.content
 
 @app.get("/bin/{bin_id}", response_class=HTMLResponse)
-@limiter.limit("1/minute")
+@limiter.limit("60/minute")
 async def get_bin(request: Request, bin_id: int, session: SessionDep):
     bin_asdf = session.get(BinModel, bin_id)
     if not bin_asdf:
