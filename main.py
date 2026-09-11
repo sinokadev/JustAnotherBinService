@@ -54,7 +54,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 templates = Jinja2Templates(directory="templates")
 
-MAX_CONTENT_LENGTH = 100_000
+MAX_CONTENT_LENGTH = 5_000_000
 
 
 @app.get("/", response_class=HTMLResponse)
