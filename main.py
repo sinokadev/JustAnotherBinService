@@ -8,17 +8,33 @@ from typing import Annotated
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from datetime import datetime, timezone
 import math
+import logging
+
+# Logging configuration
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("app.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 
 class BinModel(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     content: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 sqlite_file_name = "database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
-
 connect_args = {"check_same_thread": False}
 engine = create_engine(sqlite_url, connect_args=connect_args)
+
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
@@ -35,23 +51,23 @@ def get_real_ip(request: Request) -> str:
         return forwarded.split(",")[0].strip()
     return get_remote_address(request)
 
+
 SessionDep = Annotated[Session, Depends(get_session)]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_db_and_tables()
+    logger.info("Application started - DB tables created")
     yield
+    logger.info("Application stopped")
+
 
 limiter = Limiter(key_func=get_real_ip)
-
 app = FastAPI(lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
 templates = Jinja2Templates(directory="templates")
 
 MAX_CONTENT_LENGTH = 100_000
@@ -63,62 +79,87 @@ async def main(request: Request):
         request=request, name="index.html"
     )
 
+
 @app.post("/bin", response_class=RedirectResponse)
 @limiter.limit("10/minute")
 async def post_bin(request: Request, session: SessionDep, content: str = Form()):
     clean_content = content.strip()
     
     if not clean_content:
+        logger.warning(f"Empty content submission attempt - IP: {get_real_ip(request)}")
         raise HTTPException(status_code=400, detail="Content cannot be empty")
         
     if len(clean_content) > MAX_CONTENT_LENGTH:
+        logger.warning(
+            f"Content length exceeded - length: {len(clean_content)}, IP: {get_real_ip(request)}"
+        )
         raise HTTPException(
             status_code=400, 
             detail=f"Content exceeds maximum limit of {MAX_CONTENT_LENGTH} characters"
         )
-
+    
     bin_item = BinModel(content=clean_content)
     session.add(bin_item)
     session.commit()
     session.refresh(bin_item)
-
+    
+    logger.info(f"New bin created - ID: {bin_item.id}, length: {len(clean_content)}, IP: {get_real_ip(request)}")
     return RedirectResponse(f"/bin/{bin_item.id}", status_code=status.HTTP_303_SEE_OTHER)
+
 
 @app.get("/api/bin/{bin_id}")
 @limiter.limit("10/minute")
 async def get_bin_json(request: Request, bin_id: int, session: SessionDep):
     bin_asdf = session.get(BinModel, bin_id)
     if not bin_asdf:
+        logger.warning(f"Bin not found (JSON) - ID: {bin_id}, IP: {get_real_ip(request)}")
         raise HTTPException(status_code=404, detail="Bin not found")
+    
+    logger.info(f"Bin JSON retrieved - ID: {bin_id}, IP: {get_real_ip(request)}")
     return bin_asdf
+
 
 @app.get("/raw/{bin_id}", response_class=PlainTextResponse)
 @limiter.limit("10/minute")
 async def get_bin_raw(request: Request, bin_id: int, session: SessionDep):
     bin_item = session.get(BinModel, bin_id)
     if not bin_item:
+        logger.warning(f"Bin not found (RAW) - ID: {bin_id}, IP: {get_real_ip(request)}")
         raise HTTPException(status_code=404, detail="Bin not found")
+    
+    logger.info(f"Bin RAW retrieved - ID: {bin_id}, IP: {get_real_ip(request)}")
     return bin_item.content
+
 
 @app.get("/bin/{bin_id}", response_class=HTMLResponse)
 @limiter.limit("60/minute")
 async def get_bin(request: Request, bin_id: int, session: SessionDep):
     bin_asdf = session.get(BinModel, bin_id)
     if not bin_asdf:
+        logger.warning(f"Bin not found (HTML) - ID: {bin_id}, IP: {get_real_ip(request)}")
         raise HTTPException(status_code=404, detail="Bin not found")
-    return templates.TemplateResponse(request=request, name="bin.html", context={"bin_id":bin_id, "bin_content":bin_asdf.content})
+    
+    logger.info(f"Bin HTML retrieved - ID: {bin_id}, IP: {get_real_ip(request)}")
+    return templates.TemplateResponse(
+        request=request, 
+        name="bin.html", 
+        context={"bin_id": bin_id, "bin_content": bin_asdf.content}
+    )
+
 
 PAGE_SIZE = 50
+
+
 @app.get("/bins", response_class=HTMLResponse)
 @limiter.limit("30/minute")
 async def get_bins_list(request: Request, session: SessionDep, page: int = 1):
     if page < 1:
         page = 1
-
+    
     total_count = session.exec(select(func.count(BinModel.id))).one()
     total_pages = math.ceil(total_count / PAGE_SIZE) or 1
-
     offset = (page - 1) * PAGE_SIZE
+    
     statement = (
         select(BinModel)
         .order_by(BinModel.id.desc())
@@ -126,7 +167,8 @@ async def get_bins_list(request: Request, session: SessionDep, page: int = 1):
         .limit(PAGE_SIZE)
     )
     bins = session.exec(statement).all()
-
+    
+    logger.info(f"Bin list retrieved (HTML) - page: {page}/{total_pages}, IP: {get_real_ip(request)}")
     return templates.TemplateResponse(
         request=request,
         name="bins.html",
@@ -139,16 +181,17 @@ async def get_bins_list(request: Request, session: SessionDep, page: int = 1):
         },
     )
 
+
 @app.get("/api/bins")
 @limiter.limit("30/minute")
 async def get_bins_json(request: Request, session: SessionDep, page: int = 1, page_size: int = 50):
     if page < 1:
         page = 1
     page_size = min(page_size, 100)
-
+    
     total_count = session.exec(select(func.count(BinModel.id))).one()
     offset = (page - 1) * page_size
-
+    
     statement = (
         select(BinModel)
         .order_by(BinModel.id.desc())
@@ -156,7 +199,10 @@ async def get_bins_json(request: Request, session: SessionDep, page: int = 1, pa
         .limit(page_size)
     )
     bins = session.exec(statement).all()
-
+    
+    logger.info(
+        f"Bin list retrieved (JSON) - page: {page}, size: {page_size}, total: {total_count}, IP: {get_real_ip(request)}"
+    )
     return {
         "items": bins,
         "page": page,
