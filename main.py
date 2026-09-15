@@ -10,6 +10,8 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from datetime import datetime, timezone
 import math
+import hashlib
+import os
 import logging
 
 # Logging configuration
@@ -45,11 +47,31 @@ def get_session():
         yield session
 
 
+# 기본값 False = 프록시 없음(단일 인스턴스) 전제.
+# 나중에 nginx 등 리버스 프록시를 앞에 두게 되면 환경변수만 true로 켜면 됨.
+# 단, 이때 nginx가 X-Forwarded-For를 $remote_addr로 "덮어쓰도록" 설정되어 있어야 함
+# (proxy_set_header X-Forwarded-For $remote_addr;) - 그렇지 않으면 스푸핑 가능.
+TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
+
+
 def get_real_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return get_remote_address(request)
+    if TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def mask_ip(ip: str) -> str:
+    """로그에 남기기 전 IP를 마스킹. rate limit 키 등에는 원본(get_real_ip)을 그대로 쓰고,
+    로깅할 때만 이 함수를 통과시킨다."""
+    if ip == "unknown":
+        return ip
+    parts = ip.split(".")
+    if len(parts) == 4:  # IPv4
+        return f"{parts[0]}.{parts[1]}.{parts[2]}.xxx"
+    # IPv6나 기타 포맷은 해시로
+    return hashlib.sha256(ip.encode()).hexdigest()[:12]
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -84,26 +106,26 @@ async def main(request: Request):
 @limiter.limit("10/minute")
 async def post_bin(request: Request, session: SessionDep, content: str = Form()):
     clean_content = content.strip()
-    
+
     if not clean_content:
-        logger.warning(f"Empty content submission attempt - IP: {get_real_ip(request)}")
+        logger.warning(f"Empty content submission attempt - IP: {mask_ip(get_real_ip(request))}")
         raise HTTPException(status_code=400, detail="Content cannot be empty")
-        
+
     if len(clean_content) > MAX_CONTENT_LENGTH:
         logger.warning(
-            f"Content length exceeded - length: {len(clean_content)}, IP: {get_real_ip(request)}"
+            f"Content length exceeded - length: {len(clean_content)}, IP: {mask_ip(get_real_ip(request))}"
         )
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Content exceeds maximum limit of {MAX_CONTENT_LENGTH} characters"
         )
-    
+
     bin_item = BinModel(content=clean_content)
     session.add(bin_item)
     session.commit()
     session.refresh(bin_item)
-    
-    logger.info(f"New bin created - ID: {bin_item.id}, length: {len(clean_content)}, IP: {get_real_ip(request)}")
+
+    logger.info(f"New bin created - ID: {bin_item.id}, length: {len(clean_content)}, IP: {mask_ip(get_real_ip(request))}")
     return RedirectResponse(f"/bin/{bin_item.id}", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -112,10 +134,10 @@ async def post_bin(request: Request, session: SessionDep, content: str = Form())
 async def get_bin_json(request: Request, bin_id: int, session: SessionDep):
     bin_asdf = session.get(BinModel, bin_id)
     if not bin_asdf:
-        logger.warning(f"Bin not found (JSON) - ID: {bin_id}, IP: {get_real_ip(request)}")
+        logger.warning(f"Bin not found (JSON) - ID: {bin_id}, IP: {mask_ip(get_real_ip(request))}")
         raise HTTPException(status_code=404, detail="Bin not found")
-    
-    logger.info(f"Bin JSON retrieved - ID: {bin_id}, IP: {get_real_ip(request)}")
+
+    logger.info(f"Bin JSON retrieved - ID: {bin_id}, IP: {mask_ip(get_real_ip(request))}")
     return bin_asdf
 
 
@@ -124,10 +146,10 @@ async def get_bin_json(request: Request, bin_id: int, session: SessionDep):
 async def get_bin_raw(request: Request, bin_id: int, session: SessionDep):
     bin_item = session.get(BinModel, bin_id)
     if not bin_item:
-        logger.warning(f"Bin not found (RAW) - ID: {bin_id}, IP: {get_real_ip(request)}")
+        logger.warning(f"Bin not found (RAW) - ID: {bin_id}, IP: {mask_ip(get_real_ip(request))}")
         raise HTTPException(status_code=404, detail="Bin not found")
-    
-    logger.info(f"Bin RAW retrieved - ID: {bin_id}, IP: {get_real_ip(request)}")
+
+    logger.info(f"Bin RAW retrieved - ID: {bin_id}, IP: {mask_ip(get_real_ip(request))}")
     return bin_item.content
 
 
@@ -136,13 +158,13 @@ async def get_bin_raw(request: Request, bin_id: int, session: SessionDep):
 async def get_bin(request: Request, bin_id: int, session: SessionDep):
     bin_asdf = session.get(BinModel, bin_id)
     if not bin_asdf:
-        logger.warning(f"Bin not found (HTML) - ID: {bin_id}, IP: {get_real_ip(request)}")
+        logger.warning(f"Bin not found (HTML) - ID: {bin_id}, IP: {mask_ip(get_real_ip(request))}")
         raise HTTPException(status_code=404, detail="Bin not found")
-    
-    logger.info(f"Bin HTML retrieved - ID: {bin_id}, IP: {get_real_ip(request)}")
+
+    logger.info(f"Bin HTML retrieved - ID: {bin_id}, IP: {mask_ip(get_real_ip(request))}")
     return templates.TemplateResponse(
-        request=request, 
-        name="bin.html", 
+        request=request,
+        name="bin.html",
         context={"bin_id": bin_id, "bin_content": bin_asdf.content}
     )
 
@@ -155,11 +177,11 @@ PAGE_SIZE = 50
 async def get_bins_list(request: Request, session: SessionDep, page: int = 1):
     if page < 1:
         page = 1
-    
+
     total_count = session.exec(select(func.count(BinModel.id))).one()
     total_pages = math.ceil(total_count / PAGE_SIZE) or 1
     offset = (page - 1) * PAGE_SIZE
-    
+
     statement = (
         select(BinModel)
         .order_by(BinModel.id.desc())
@@ -167,8 +189,8 @@ async def get_bins_list(request: Request, session: SessionDep, page: int = 1):
         .limit(PAGE_SIZE)
     )
     bins = session.exec(statement).all()
-    
-    logger.info(f"Bin list retrieved (HTML) - page: {page}/{total_pages}, IP: {get_real_ip(request)}")
+
+    logger.info(f"Bin list retrieved (HTML) - page: {page}/{total_pages}, IP: {mask_ip(get_real_ip(request))}")
     return templates.TemplateResponse(
         request=request,
         name="bins.html",
@@ -187,11 +209,11 @@ async def get_bins_list(request: Request, session: SessionDep, page: int = 1):
 async def get_bins_json(request: Request, session: SessionDep, page: int = 1, page_size: int = 50):
     if page < 1:
         page = 1
-    page_size = min(page_size, 100)
-    
+    page_size = max(1, min(page_size, 100))  # 하한 추가: 0/음수 → ZeroDivisionError 방지
+
     total_count = session.exec(select(func.count(BinModel.id))).one()
     offset = (page - 1) * page_size
-    
+
     statement = (
         select(BinModel)
         .order_by(BinModel.id.desc())
@@ -199,9 +221,9 @@ async def get_bins_json(request: Request, session: SessionDep, page: int = 1, pa
         .limit(page_size)
     )
     bins = session.exec(statement).all()
-    
+
     logger.info(
-        f"Bin list retrieved (JSON) - page: {page}, size: {page_size}, total: {total_count}, IP: {get_real_ip(request)}"
+        f"Bin list retrieved (JSON) - page: {page}, size: {page_size}, total: {total_count}, IP: {mask_ip(get_real_ip(request))}"
     )
     return {
         "items": bins,
