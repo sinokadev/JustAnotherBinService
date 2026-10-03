@@ -19,18 +19,34 @@
     </ul>
 
     <div style="margin-top: 20px;">
+        <!-- 맨 처음 페이지로 (First Page) -->
+        {% if page > 1 %}
+            <a href="/bins?page=1">« First</a> |
+        {% else %}
+            <span style="color: gray;">« First</span> |
+        {% endif %}
+
+        <!-- 이전 페이지 (Previous Page) -->
         {% if has_prev %}
             <a href="/bins?page={{ page - 1 }}">← Previous</a>
         {% else %}
             <span style="color: gray;">← Previous</span>
         {% endif %}
 
-        <span> Page {{ page }} / {{ total_pages }} </span>
+        <span> [ Page {{ page }} / {{ total_pages }} ] </span>
 
+        <!-- 다음 페이지 (Next Page) -->
         {% if has_next %}
             <a href="/bins?page={{ page + 1 }}">Next →</a>
         {% else %}
             <span style="color: gray;">Next →</span>
+        {% endif %}
+
+        <!-- 맨 마지막 페이지로 (Last Page) -->
+        {% if page < total_pages %}
+            | <a href="/bins?page={{ total_pages }}">Last »</a>
+        {% else %}
+            | <span style="color: gray;">Last »</span>
         {% endif %}
     </div>
 
