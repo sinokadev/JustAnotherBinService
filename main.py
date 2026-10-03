@@ -15,11 +15,21 @@ import os
 import logging
 
 # Logging configuration
+file_handler = TimedRotatingFileHandler(
+    "app.log",
+    when="MIDNIGHT",
+    interval=1,
+    backupCount=90,
+    encoding="utf-8"
+)
+file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+)
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
-        logging.FileHandler("app.log", encoding="utf-8"),
+        file_handler,
         logging.StreamHandler()
     ]
 )
