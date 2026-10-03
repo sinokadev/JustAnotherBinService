@@ -68,9 +68,15 @@ TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true
 
 def get_real_ip(request: Request) -> str:
     if TRUST_PROXY_HEADERS:
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
+        # nginx가 외부에서 들어온 값을 덮어쓴다는 전제
+        x_real_ip = request.headers.get("X-Real-IP")
+        if x_real_ip:
+            return x_real_ip.strip()
+
+        x_forwarded_for = request.headers.get("X-Forwarded-For")
+        if x_forwarded_for:
+            return x_forwarded_for.split(",")[0].strip()
+
     return request.client.host if request.client else "unknown"
 
 
