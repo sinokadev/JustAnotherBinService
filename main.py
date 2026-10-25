@@ -72,6 +72,8 @@ def get_session():
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
+BIN_PREVIEW_LENGTH = 200
+
 TRUST_PROXY_HEADERS = (
     os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
 )
@@ -462,15 +464,34 @@ async def get_bins_json(
     ) * page_size
 
     statement = (
-        select(BinModel)
+        select(
+            BinModel.id,
+            func.substr(
+                BinModel.content,
+                1,
+                BIN_PREVIEW_LENGTH,
+            ).label("preview"),
+            func.length(BinModel.content).label("content_length"),
+            BinModel.created_at,
+        )
         .order_by(BinModel.id.desc())
         .offset(offset)
         .limit(page_size)
     )
 
-    bins = session.exec(
+    rows = session.exec(
         statement
     ).all()
+
+    items = [
+        {
+            "id": row.id,
+            "preview": row.preview,
+            "content_length": row.content_length,
+            "created_at": row.created_at,
+        }
+        for row in rows
+    ]
 
     total_pages = (
         math.ceil(total_count / page_size)
@@ -487,7 +508,7 @@ async def get_bins_json(
     )
 
     return {
-        "items": bins,
+        "items": items,
         "page": page,
         "page_size": page_size,
         "total_count": total_count,
