@@ -372,6 +372,10 @@ async def get_bin(
         context={
             "bin_id": bin_id,
             "bin_content": bin_item.content,
+            "content_length": len(bin_item.content),
+            "content_size_bytes": len(bin_item.content.encode("utf-8")),
+            "created_at": bin_item.created_at,
+            "max_content_length": MAX_CONTENT_LENGTH,
         },
     )
 
