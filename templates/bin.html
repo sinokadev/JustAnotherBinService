@@ -28,7 +28,14 @@
 <body>
     <h1>Bin {{ bin_id }} - Just Another Bin Service</h1>
     <a href="/">Home</a> <a href="/raw/{{ bin_id }}">Raw</a>
-    <p class="bin-details" aria-label="Bin details">{{ "{:,}".format(content_size_bytes) }} bytes · {{ "{:,}".format(content_length) }} / {{ "{:,}".format(max_content_length) }} characters · <time datetime="{{ created_at.isoformat() }}">{{ created_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</time></p>
+    <p class="bin-details" aria-label="Bin details">
+        {{ content_size_human }} ({{ "{:,}".format(content_size_bytes) }} bytes) · {{ "{:,}".format(content_length) }} / {{ "{:,}".format(max_content_length) }} characters ·
+        {% if created_at %}
+            <time datetime="{{ created_at.isoformat() }}">{{ created_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</time>
+        {% else %}
+            <span>Unknown date</span>
+        {% endif %}
+    </p>
     <pre><code>{{ bin_content }}</code></pre>
 </body>
 </html>

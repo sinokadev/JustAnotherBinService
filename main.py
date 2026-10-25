@@ -74,6 +74,18 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 BIN_PREVIEW_LENGTH = 200
 
+
+def format_bytes(size: int) -> str:
+    units = ("bytes", "KiB", "MiB", "GiB", "TiB")
+    value = float(size)
+
+    for unit in units[:-1]:
+        if value < 1024:
+            return f"{int(value)} {unit}" if unit == "bytes" else f"{value:.2f} {unit}"
+        value /= 1024
+
+    return f"{value:.2f} {units[-1]}"
+
 TRUST_PROXY_HEADERS = (
     os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
 )
@@ -368,6 +380,8 @@ async def get_bin(
         mask_ip(get_real_ip(request)),
     )
 
+    content_size_bytes = len(bin_item.content.encode("utf-8"))
+
     return templates.TemplateResponse(
         request=request,
         name="bin.html",
@@ -375,7 +389,8 @@ async def get_bin(
             "bin_id": bin_id,
             "bin_content": bin_item.content,
             "content_length": len(bin_item.content),
-            "content_size_bytes": len(bin_item.content.encode("utf-8")),
+            "content_size_bytes": content_size_bytes,
+            "content_size_human": format_bytes(content_size_bytes),
             "created_at": bin_item.created_at,
             "max_content_length": MAX_CONTENT_LENGTH,
         },
