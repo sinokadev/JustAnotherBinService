@@ -102,6 +102,18 @@ async def main(request: Request):
     )
 
 
+@app.get("/random", response_class=RedirectResponse)
+async def get_random_bin(session: SessionDep):
+    bin_item = session.exec(
+        select(BinModel).order_by(func.random()).limit(1)
+    ).first()
+
+    if bin_item is None:
+        return RedirectResponse("/bins", status_code=status.HTTP_303_SEE_OTHER)
+
+    return RedirectResponse(f"/bin/{bin_item.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
 @app.post("/bin", response_class=RedirectResponse)
 @limiter.limit("10/minute")
 async def post_bin(request: Request, session: SessionDep, content: str = Form()):
