@@ -17,24 +17,18 @@
             white-space: pre-wrap;
             word-break: break-all;
         }
+
+        .bin-details {
+            color: #666;
+            font-size: 0.8rem;
+            margin: 0.25rem 0 1rem;
+        }
     </style>
 </head>
 <body>
     <h1>Bin {{ bin_id }} - Just Another Bin Service</h1>
-    <a href="/">Home</a> <a href="/raw/{{ bin_id }}">Raw</a> <br><br> 
-    <section aria-label="Bin details">
-        <h2>Details</h2>
-        <dl>
-            <dt>Content size</dt>
-            <dd>{{ "{:,}".format(content_size_bytes) }} bytes</dd>
-
-            <dt>Characters</dt>
-            <dd>{{ "{:,}".format(content_length) }} / {{ "{:,}".format(max_content_length) }}</dd>
-
-            <dt>Created at</dt>
-            <dd><time datetime="{{ created_at.isoformat() }}">{{ created_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</time></dd>
-        </dl>
-    </section>
+    <a href="/">Home</a> <a href="/raw/{{ bin_id }}">Raw</a>
+    <p class="bin-details" aria-label="Bin details">{{ "{:,}".format(content_size_bytes) }} bytes · {{ "{:,}".format(content_length) }} / {{ "{:,}".format(max_content_length) }} characters · <time datetime="{{ created_at.isoformat() }}">{{ created_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</time></p>
     <pre><code>{{ bin_content }}</code></pre>
 </body>
 </html>
