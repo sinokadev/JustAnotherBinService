@@ -1,0 +1,37 @@
+<section class="hex-tools" aria-label="Hex viewer controls">
+    <label>
+        Bytes per row
+        <select id="hex-width">
+            <option value="8">8</option>
+            <option value="16" selected>16</option>
+            <option value="32">32</option>
+        </select>
+    </label>
+
+    <form id="hex-search-form" class="hex-search">
+        <label for="hex-search">Find bytes</label>
+        <input id="hex-search" type="search" placeholder="48 65 6c 6c 6f" autocomplete="off">
+        <button type="submit">Find</button>
+        <button id="hex-previous" type="button" disabled>Previous</button>
+        <button id="hex-next" type="button" disabled>Next</button>
+    </form>
+
+    <form id="hex-goto-form" class="hex-goto">
+        <label for="hex-goto">Go to offset</label>
+        <input id="hex-goto" inputmode="text" placeholder="Hex, e.g. 1a0">
+        <button type="submit">Go</button>
+    </form>
+</section>
+
+<p id="hex-status" class="hex-status" role="status" aria-live="polite"></p>
+
+<div class="hex-heading" aria-hidden="true">
+    <span>Offset</span>
+    <span>Hexadecimal</span>
+    <span>ASCII</span>
+    <span></span>
+</div>
+
+<div id="hex-scroll" class="hex-scroll" tabindex="0" aria-label="Hex dump; use arrow keys to scroll">
+    <div id="hex-output" class="hex-output"></div>
+</div>

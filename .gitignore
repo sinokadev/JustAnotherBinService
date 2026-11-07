@@ -11,3 +11,10 @@ wheels/
 
 # db
 database.db
+*.db
+*.db-shm
+*.db-wal
+
+# logs
+*.log
+app.log

@@ -1,0 +1,10 @@
+<main class="bin-view" data-mode="{{ view }}" data-local="true">
+    <noscript><p role="alert">Local browser data requires JavaScript to be enabled.</p></noscript>
+    <p id="local-status" role="status">Loading...</p>
+
+    {% if view == "hex" %}
+        {% include "bin/hex-controls.html" %}
+    {% else %}
+        <pre id="local-content"></pre>
+    {% endif %}
+</main>

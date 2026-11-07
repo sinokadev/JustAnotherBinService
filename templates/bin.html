@@ -4,38 +4,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bin {{ bin_id }} - bin.sinoka.dev</title>
-
-    <meta name="description" content="View pasted content on bin.sinoka.dev (Bin ID: {{ bin_id }})">
+    <meta name="description" content="View content on bin.sinoka.dev (Bin ID: {{ bin_id }})">
     <meta name="robots" content="noindex, follow">
-    
-    <meta property="og:type" content="article">
-    <meta property="og:title" content="Bin {{ bin_id }} - bin.sinoka.dev">
-    <meta property="og:description" content="View pasted content on bin.sinoka.dev">
-
     <style>
-        pre {
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
-        .bin-details {
-            color: #666;
-            font-size: 0.8rem;
-            margin: 0.25rem 0 1rem;
+        pre { white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; }
+        .bin-nav { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        [hidden] { display: none !important; }
+        .bin-details { color: #666; font-size: 0.8rem; margin: 0.25rem 0 1rem; }
+        .hex-row, .hex-heading { display: grid; grid-template-columns: 6rem minmax(20rem, 1fr) minmax(10rem, 0.7fr) 2rem; gap: 0.5rem; align-items: center; min-height: 1.5rem; font-family: monospace; white-space: nowrap; }
+        .hex-tools { margin: 0.75rem 0 0.25rem; }
+        .hex-tools button:disabled { cursor: not-allowed; opacity: 0.5; }
+        .hex-status { margin: 0.25rem 0; }
+        .hex-heading { margin-bottom: 0.25rem; }
+        .hex-scroll { max-height: 72vh; overflow: auto; }
+        .hex-output { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.5rem; }
+        .hex-spacer { height: 0; pointer-events: none; }
+        .hex-row.is-match { font-weight: bold; text-decoration: underline; }
+        .hex-offset { color: #2563eb; }
+        .hex-bytes { color: #a16207; }
+        .hex-ascii { color: #15803d; }
+        .hex-row.is-match .hex-bytes, .hex-row.is-match .hex-ascii { color: #c026d3; }
+        .hex-copy { padding: 0; border: 0; background: transparent; cursor: pointer; }
+        @media (max-width: 650px) {
+            .hex-heading, .hex-row { grid-template-columns: 4.5rem minmax(20rem, 1fr) 2rem; gap: 0.5rem; }
+            .hex-heading span:nth-child(3), .hex-ascii { display: none; }
+            .hex-search, .hex-goto { margin-top: 0.25rem; }
         }
     </style>
+    <script src="/static/bin.js" defer></script>
 </head>
 <body>
     <h1>Bin {{ bin_id }} - Just Another Bin Service</h1>
-    <a href="/">Home</a> <a href="/raw/{{ bin_id }}">Raw</a>
+
+    <nav class="bin-nav" aria-label="Bin navigation">
+        <a href="/">Home</a>
+        {% if not is_local %}<a href="/raw/{{ bin_id }}">Raw</a>{% endif %}
+        <a href="{{ text_url }}" {% if view == "text" %}aria-current="page"{% endif %}>Text</a>
+        <a href="{{ hex_url }}" {% if view == "hex" %}aria-current="page"{% endif %}>Hex</a>
+        {% if not is_local %}<a href="#" id="decode-base64" role="button" hidden>Base64 Decode</a>{% endif %}
+    </nav>
+
     <p class="bin-details" aria-label="Bin details">
-        {{ content_size_human }} ({{ "{:,}".format(content_size_bytes) }} bytes) · {{ "{:,}".format(content_length) }} / {{ "{:,}".format(max_content_length) }} characters ·
-        {% if created_at %}
+        <span id="size-human">{{ content_size_human }}</span>
+        (<span id="size-bytes">{{ "{:,}".format(content_size_bytes) }}</span> bytes) ·
+        <span id="size-chars">{{ "{:,}".format(content_length) }}</span>
+        / {{ "{:,}".format(max_content_length) }} characters ·
+        {% if is_local %}
+            <span>Local browser data</span>
+        {% elif created_at %}
             <time datetime="{{ created_at.isoformat() }}">{{ created_at.strftime("%Y-%m-%d %H:%M:%S UTC") }}</time>
         {% else %}
             <span>Unknown date</span>
         {% endif %}
     </p>
-    <pre><code>{{ bin_content }}</code></pre>
+
+    {% if is_local %}
+        {% include "bin/local.html" %}
+    {% elif view == "hex" %}
+        {% include "bin/hex.html" %}
+    {% else %}
+        {% include "bin/text.html" %}
+    {% endif %}
 </body>
 </html>

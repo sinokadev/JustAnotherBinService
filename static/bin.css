@@ -1,0 +1,114 @@
+pre {
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
+
+.bin-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+.bin-details {
+    color: #666;
+    font-size: 0.8rem;
+    margin: 0.25rem 0 1rem;
+}
+
+.hex-row {
+    display: grid;
+    grid-template-columns: 6rem minmax(20rem, 1fr) minmax(10rem, 0.7fr) 2rem;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 1.5rem;
+    font-family: monospace;
+    white-space: nowrap;
+}
+
+.hex-tools {
+    margin: 0.75rem 0 0.25rem;
+}
+
+.hex-tools button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.hex-status {
+    margin: 0.25rem 0;
+}
+
+.hex-heading {
+    display: grid;
+    grid-template-columns: 6rem minmax(20rem, 1fr) minmax(10rem, 0.7fr) 2rem;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+.hex-scroll {
+    max-height: 72vh;
+    overflow: auto;
+}
+
+.hex-output {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    line-height: 1.5rem;
+}
+
+.hex-spacer {
+    height: 0;
+    pointer-events: none;
+}
+
+.hex-row.is-match {
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+.hex-offset {
+    color: #2563eb;
+}
+
+.hex-bytes {
+    color: #a16207;
+}
+
+.hex-ascii {
+    color: #15803d;
+}
+
+.hex-row.is-match .hex-bytes,
+.hex-row.is-match .hex-ascii {
+    color: #c026d3;
+}
+
+.hex-copy {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+@media (max-width: 650px) {
+    .hex-heading,
+    .hex-row {
+        grid-template-columns: 4.5rem minmax(20rem, 1fr) 2rem;
+        gap: 0.5rem;
+    }
+
+    .hex-heading span:nth-child(3),
+    .hex-ascii {
+        display: none;
+    }
+
+    .hex-search,
+    .hex-goto {
+        margin-top: 0.25rem;
+    }
+}
