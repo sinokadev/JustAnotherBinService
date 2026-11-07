@@ -201,8 +201,8 @@
             const tx = db.transaction("bins", "readwrite");
             tx.objectStore("bins").put({ bytes: bytes.buffer, savedAt: new Date().toISOString() }, "current");
             tx.oncomplete = () => location.assign(page.dataset.localUrl);
-            tx.onerror = () => alert("로컬 Bin 저장 실패");
-        }, () => alert("브라우저 저장소 접근 실패"));
+            tx.onerror = () => alert("Failed to save local bin.");
+        }, () => alert("Failed to access browser storage."));
     }
 
     function loadLocalContent() {
@@ -212,7 +212,7 @@
             const req = tx.objectStore("bins").get("current");
             req.onsuccess = () => {
                 if (!req.result) {
-                    if (status) status.textContent = "저장된 로컬 Bin이 없습니다.";
+                    if (status) status.textContent = "No local bin stored in this browser.";
                     return;
                 }
                 const bytes = new Uint8Array(req.result.bytes);
@@ -226,8 +226,8 @@
                     if (el) el.textContent = text;
                 }
             };
-            req.onerror = () => { if (status) status.textContent = "로컬 Bin 읽기 실패"; };
-        }, () => { if (status) status.textContent = "브라우저 저장소 열기 실패"; });
+            req.onerror = () => { if (status) status.textContent = "Failed to read local bin."; };
+        }, () => { if (status) status.textContent = "Failed to open browser storage."; });
     }
 
     if (isLocal) {

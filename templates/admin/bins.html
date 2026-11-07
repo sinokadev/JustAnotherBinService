@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Bins - Just Another Bin Service</title>
+    <meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+    <p>
+        <a href="/">Home</a>
+        <a href="/admin">Admin Bins</a>
+        <a href="/admin/logout">Log Out</a>
+    </p>
+
+    <h1>Admin Bins</h1>
+    <p>Total {{ total_count }} bins (Page {{ page }} / {{ total_pages }})</p>
+
+    <table border="1" cellpadding="6" cellspacing="0">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Status</th>
+                <th>Preview</th>
+                <th>Created At</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for bin in bins %}
+            <tr>
+                <td><a href="/admin/bin/{{ bin.id }}">#{{ bin.id }}</a></td>
+                <td>{{ "Deleted" if bin.is_deleted else "Active" }}</td>
+                <td><code>{{ bin.content[:50] }}{% if bin.content|length > 50 %}...{% endif %}</code></td>
+                <td>{{ bin.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if bin.created_at else '-' }}</td>
+                <td>
+                    <form method="post" action="/admin/bin/{{ bin.id }}/{% if bin.is_deleted %}restore{% else %}delete{% endif %}" style="display:inline;">
+                        <button type="submit">{{ "Restore" if bin.is_deleted else "Soft Delete" }}</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5">No bins found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <p>
+        {% if page > 1 %}
+            <a href="/admin?page={{ page - 1 }}">« Previous</a>
+        {% endif %}
+        <span>[ Page {{ page }} / {{ total_pages }} ]</span>
+        {% if page < total_pages %}
+            <a href="/admin?page={{ page + 1 }}">Next »</a>
+        {% endif %}
+    </p>
+</body>
+</html>

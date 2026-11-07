@@ -7,15 +7,19 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Annotated
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from starlette.middleware.gzip import GZipMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import event
 from sqlmodel import Field, Session, SQLModel, create_engine, func, select
+from starlette.middleware.gzip import GZipMiddleware
+
+# Load environment variables
+load_dotenv()
 
 # Configuration
 DATABASE_FILE = os.getenv("DATABASE_FILE", "database.db")
@@ -24,6 +28,8 @@ MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", "50000000"))
 PAGE_SIZE = int(os.getenv("PAGE_SIZE", "50"))
 BIN_PREVIEW_LENGTH = 200
 TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").lower() == "true"
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin1234")
+ADMIN_SESSION_TOKEN = hashlib.sha256(f"admin_salt_{ADMIN_PASSWORD}".encode()).hexdigest()
 
 # Logging setup
 file_handler = TimedRotatingFileHandler("app.log", when="MIDNIGHT", interval=1, backupCount=90, encoding="utf-8")
@@ -37,6 +43,7 @@ class BinModel(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     content: str
     created_at: datetime | None = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_deleted: bool = Field(default=False)
 
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
@@ -56,8 +63,11 @@ def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
     with engine.begin() as connection:
         columns = connection.exec_driver_sql("PRAGMA table_info(binmodel)").all()
-        if columns and "created_at" not in {column[1] for column in columns}:
+        col_names = {column[1] for column in columns}
+        if columns and "created_at" not in col_names:
             connection.exec_driver_sql("ALTER TABLE binmodel ADD COLUMN created_at DATETIME")
+        if columns and "is_deleted" not in col_names:
+            connection.exec_driver_sql("ALTER TABLE binmodel ADD COLUMN is_deleted BOOLEAN DEFAULT 0")
 
 
 def get_session():
@@ -97,6 +107,11 @@ def mask_ip(ip: str) -> str:
     if len(parts) == 4:
         return f"{parts[0]}.{parts[1]}.{parts[2]}.xxx"
     return hashlib.sha256(ip.encode()).hexdigest()[:12]
+
+
+def is_admin(request: Request) -> bool:
+    cookie_token = request.cookies.get("admin_session")
+    return bool(cookie_token and cookie_token == ADMIN_SESSION_TOKEN)
 
 
 def get_bin_or_404(session: Session, bin_id: int, request: Request | None = None, label: str = "") -> BinModel:
@@ -218,6 +233,13 @@ async def get_local_bin_hex(request: Request):
 @limiter.limit("60/minute")
 async def get_bin(request: Request, bin_id: int, session: SessionDep):
     bin_item = get_bin_or_404(session, bin_id, request, "HTML")
+    if bin_item.is_deleted:
+        return templates.TemplateResponse(
+            request=request,
+            name="deleted.html",
+            context={"bin_id": bin_id},
+            status_code=status.HTTP_410_GONE,
+        )
     logger.info("Bin HTML retrieved - ID: %d, IP: %s", bin_id, mask_ip(get_real_ip(request)))
     return render_bin_page(request, bin_id, bin_item.content, bin_item.created_at)
 
@@ -226,6 +248,13 @@ async def get_bin(request: Request, bin_id: int, session: SessionDep):
 @limiter.limit("60/minute")
 async def get_bin_hex(request: Request, bin_id: int, session: SessionDep):
     bin_item = get_bin_or_404(session, bin_id, request, "HEX")
+    if bin_item.is_deleted:
+        return templates.TemplateResponse(
+            request=request,
+            name="deleted.html",
+            context={"bin_id": bin_id},
+            status_code=status.HTTP_410_GONE,
+        )
     return render_bin_page(request, bin_id, bin_item.content, bin_item.created_at, view="hex")
 
 
@@ -233,13 +262,17 @@ async def get_bin_hex(request: Request, bin_id: int, session: SessionDep):
 @limiter.limit("10/minute")
 async def get_bin_raw(request: Request, bin_id: int, session: SessionDep):
     bin_item = get_bin_or_404(session, bin_id, request, "RAW")
+    if bin_item.is_deleted:
+        return PlainTextResponse("This bin has been deleted.", status_code=status.HTTP_410_GONE)
     logger.info("Bin RAW retrieved - ID: %d, IP: %s", bin_id, mask_ip(get_real_ip(request)))
     return bin_item.content
 
 
 @app.get("/random", response_class=RedirectResponse)
 async def get_random_bin(session: SessionDep):
-    bin_item = session.exec(select(BinModel).order_by(func.random()).limit(1)).first()
+    bin_item = session.exec(
+        select(BinModel).where(BinModel.is_deleted == False).order_by(func.random()).limit(1)  # noqa: E712
+    ).first()
     if bin_item is None:
         return RedirectResponse("/bins", status_code=status.HTTP_303_SEE_OTHER)
     return RedirectResponse(f"/bin/{bin_item.id}", status_code=status.HTTP_303_SEE_OTHER)
@@ -249,11 +282,14 @@ async def get_random_bin(session: SessionDep):
 @limiter.limit("30/minute")
 async def get_bins_list(request: Request, session: SessionDep, page: int = 1):
     page = max(1, page)
-    total_count = session.exec(select(func.count(BinModel.id))).one()
+    where_clause = BinModel.is_deleted == False  # noqa: E712
+    total_count = session.exec(select(func.count(BinModel.id)).where(where_clause)).one()
     total_pages = math.ceil(total_count / PAGE_SIZE) or 1
     offset = (page - 1) * PAGE_SIZE
 
-    bins = session.exec(select(BinModel).order_by(BinModel.id.desc()).offset(offset).limit(PAGE_SIZE)).all()
+    bins = session.exec(
+        select(BinModel).where(where_clause).order_by(BinModel.id.desc()).offset(offset).limit(PAGE_SIZE)
+    ).all()
     logger.info("Bin list retrieved (HTML) - page: %d/%d, IP: %s", page, total_pages, mask_ip(get_real_ip(request)))
 
     return templates.TemplateResponse(
@@ -287,6 +323,8 @@ async def post_bin_api(request: Request, session: SessionDep, content: str = For
 @limiter.limit("10/minute")
 async def get_bin_json(request: Request, bin_id: int, session: SessionDep):
     bin_item = get_bin_or_404(session, bin_id, request, "JSON")
+    if bin_item.is_deleted:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="This bin has been deleted.")
     logger.info("Bin JSON retrieved - ID: %d, IP: %s", bin_id, mask_ip(get_real_ip(request)))
     return bin_item
 
@@ -296,7 +334,8 @@ async def get_bin_json(request: Request, bin_id: int, session: SessionDep):
 async def get_bins_json(request: Request, session: SessionDep, page: int = 1, page_size: int = 50):
     page = max(1, page)
     page_size = max(1, min(page_size, 100))
-    total_count = session.exec(select(func.count(BinModel.id))).one()
+    where_clause = BinModel.is_deleted == False  # noqa: E712
+    total_count = session.exec(select(func.count(BinModel.id)).where(where_clause)).one()
     offset = (page - 1) * page_size
 
     statement = (
@@ -306,6 +345,7 @@ async def get_bins_json(request: Request, session: SessionDep, page: int = 1, pa
             func.length(BinModel.content).label("content_length"),
             BinModel.created_at,
         )
+        .where(where_clause)
         .order_by(BinModel.id.desc())
         .offset(offset)
         .limit(page_size)
@@ -329,3 +369,95 @@ async def get_bins_json(request: Request, session: SessionDep, page: int = 1, pa
         "total_count": total_count,
         "total_pages": total_pages,
     }
+
+
+# Admin Routes
+@app.get("/admin/login", response_class=HTMLResponse)
+async def admin_login_page(request: Request, next: str = "/admin"):
+    if is_admin(request):
+        return RedirectResponse(url=next, status_code=status.HTTP_303_SEE_OTHER)
+    return templates.TemplateResponse(request=request, name="admin/login.html", context={"next_url": next, "error": None})
+
+
+@app.post("/admin/login")
+async def admin_login(request: Request, password: str = Form(""), next: str = Form("/admin")):
+    if password == ADMIN_PASSWORD:
+        resp = RedirectResponse(url=next, status_code=status.HTTP_303_SEE_OTHER)
+        resp.set_cookie(key="admin_session", value=ADMIN_SESSION_TOKEN, httponly=True, samesite="lax")
+        return resp
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/login.html",
+        context={"next_url": next, "error": "Invalid password."},
+        status_code=status.HTTP_401_UNAUTHORIZED,
+    )
+
+
+@app.get("/admin/logout")
+async def admin_logout():
+    resp = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    resp.delete_cookie(key="admin_session")
+    return resp
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard(request: Request, session: SessionDep, page: int = 1):
+    if not is_admin(request):
+        return RedirectResponse(url="/admin/login?next=/admin", status_code=status.HTTP_303_SEE_OTHER)
+    page = max(1, page)
+    total_count = session.exec(select(func.count(BinModel.id))).one()
+    total_pages = math.ceil(total_count / PAGE_SIZE) or 1
+    offset = (page - 1) * PAGE_SIZE
+
+    bins = session.exec(select(BinModel).order_by(BinModel.id.desc()).offset(offset).limit(PAGE_SIZE)).all()
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/bins.html",
+        context={
+            "bins": bins,
+            "page": page,
+            "total_pages": total_pages,
+            "total_count": total_count,
+        },
+    )
+
+
+@app.get("/admin/bin/{bin_id}", response_class=HTMLResponse)
+async def admin_get_bin(request: Request, bin_id: int, session: SessionDep):
+    if not is_admin(request):
+        return RedirectResponse(url=f"/admin/login?next=/admin/bin/{bin_id}", status_code=status.HTTP_303_SEE_OTHER)
+    bin_item = get_bin_or_404(session, bin_id, request, "ADMIN")
+    size_bytes = len(bin_item.content.encode("utf-8"))
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/bin.html",
+        context={
+            "bin": bin_item,
+            "content_size_bytes": size_bytes,
+            "content_size_human": format_bytes(size_bytes),
+        },
+    )
+
+
+@app.post("/admin/bin/{bin_id}/delete")
+async def admin_delete_bin(request: Request, bin_id: int, session: SessionDep, return_to: str = Form("/admin")):
+    if not is_admin(request):
+        return RedirectResponse(url=f"/admin/login?next=/admin/bin/{bin_id}", status_code=status.HTTP_303_SEE_OTHER)
+    bin_item = get_bin_or_404(session, bin_id, request, "ADMIN_DELETE")
+    bin_item.is_deleted = True
+    session.add(bin_item)
+    session.commit()
+    logger.info("Bin soft-deleted - ID: %d, IP: %s", bin_id, mask_ip(get_real_ip(request)))
+    return RedirectResponse(url=return_to, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/admin/bin/{bin_id}/restore")
+async def admin_restore_bin(request: Request, bin_id: int, session: SessionDep, return_to: str = Form("/admin")):
+    if not is_admin(request):
+        return RedirectResponse(url=f"/admin/login?next=/admin/bin/{bin_id}", status_code=status.HTTP_303_SEE_OTHER)
+    bin_item = get_bin_or_404(session, bin_id, request, "ADMIN_RESTORE")
+    bin_item.is_deleted = False
+    session.add(bin_item)
+    session.commit()
+    logger.info("Bin restored - ID: %d, IP: %s", bin_id, mask_ip(get_real_ip(request)))
+    return RedirectResponse(url=return_to, status_code=status.HTTP_303_SEE_OTHER)

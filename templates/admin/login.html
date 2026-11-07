@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - Just Another Bin Service</title>
+    <meta name="robots" content="noindex, nofollow">
+</head>
+<body>
+    <h1>Admin Login</h1>
+    {% if error %}
+        <p><strong>{{ error }}</strong></p>
+    {% endif %}
+    <form method="post" action="/admin/login">
+        <input type="hidden" name="next" value="{{ next_url }}">
+        <p>
+            <label for="password">Password:</label><br>
+            <input type="password" id="password" name="password" required autofocus autocomplete="current-password">
+        </p>
+        <p>
+            <input type="submit" value="Log In">
+        </p>
+    </form>
+    <p><a href="/">Home</a></p>
+</body>
+</html>

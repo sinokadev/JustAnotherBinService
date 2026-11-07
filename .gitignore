@@ -18,3 +18,9 @@ database.db
 # logs
 *.log
 app.log
+
+# env
+.env
+
+# editor
+.vscode/

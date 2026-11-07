@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Bin #{{ bin.id }} - Just Another Bin Service</title>
+    <meta name="robots" content="noindex, nofollow">
+    <style>
+        pre { white-space: pre-wrap; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <p>
+        <a href="/">Home</a>
+        <a href="/admin">Admin Bins</a>
+        <a href="/bin/{{ bin.id }}">Public View</a>
+        <a href="/admin/logout">Log Out</a>
+    </p>
+
+    <h1>Bin #{{ bin.id }} (Admin View)</h1>
+
+    <p>
+        Status: <strong>{{ "Deleted" if bin.is_deleted else "Active" }}</strong> ·
+        Size: {{ content_size_human }} ({{ "{:,}".format(content_size_bytes) }} bytes) ·
+        Date: {{ bin.created_at.strftime('%Y-%m-%d %H:%M:%S UTC') if bin.created_at else 'Unknown' }}
+    </p>
+
+    <form method="post" action="/admin/bin/{{ bin.id }}/{% if bin.is_deleted %}restore{% else %}delete{% endif %}">
+        <input type="hidden" name="return_to" value="/admin/bin/{{ bin.id }}">
+        <button type="submit">{{ "Restore this bin" if bin.is_deleted else "Soft delete this bin" }}</button>
+    </form>
+
+    <h2>Content</h2>
+    <pre>{{ bin.content }}</pre>
+</body>
+</html>
